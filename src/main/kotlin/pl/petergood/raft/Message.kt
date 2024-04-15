@@ -1,3 +1,4 @@
 package pl.petergood.raft
 
-class Message
+sealed class Message
+class StopNode : Message()

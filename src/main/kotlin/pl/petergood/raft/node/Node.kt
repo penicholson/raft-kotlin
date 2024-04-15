@@ -3,6 +3,7 @@ package pl.petergood.raft.node
 import pl.petergood.raft.Message
 
 interface Node {
-    fun start()
+    suspend fun start()
+    suspend fun stop()
     suspend fun dispatchMessage(message: Message)
 }

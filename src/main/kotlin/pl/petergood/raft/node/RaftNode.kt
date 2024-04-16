@@ -3,18 +3,26 @@ package pl.petergood.raft.node
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import pl.petergood.raft.Message
 import pl.petergood.raft.StopNode
 import java.util.*
-import java.util.concurrent.atomic.AtomicBoolean
+
+data class NodeState(
+    val currentTerm: Int = 0,
+    val votedFor: UUID? = null,
+    val status: NodeStatus = NodeStatus.STOPPED
+)
+
+enum class NodeStatus {
+    LEADER, FOLLOWER, CANDIDATE, STOPPED
+}
 
 class RaftNode(val id: UUID) : Node {
-    val inputChannel: Channel<Message> = Channel()
-    val isRunning = AtomicBoolean(false)
+    private val inputChannel: Channel<Message> = Channel()
+    private var state = NodeState()
 
     override suspend fun start() {
-        isRunning.compareAndSet(false, true)
+        state = state.copy(status = NodeStatus.CANDIDATE)
         handler()
     }
 
@@ -26,20 +34,22 @@ class RaftNode(val id: UUID) : Node {
         inputChannel.send(message)
     }
 
+    override fun isRunning(): Boolean = state.status != NodeStatus.STOPPED
+
     private suspend fun handler() {
-        while (isRunning.get()) {
+        while (isRunning()) {
             val message = inputChannel.receive()
 
             when (message) {
                 is StopNode -> {
-                    isRunning.compareAndSet(true, false)
+                    state = state.copy(status = NodeStatus.STOPPED)
                 }
             }
         }
     }
 }
 
-fun RaftNode.launch(scope: CoroutineScope) {
+fun Node.launch(scope: CoroutineScope) {
     scope.launch {
         start()
     }

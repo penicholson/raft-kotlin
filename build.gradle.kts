@@ -18,10 +18,6 @@ dependencies {
     testImplementation("io.kotest:kotest-assertions-core:$koTestVersion")
 }
 
-//tasks.test {
-//    useJUnitPlatform()
-//}
-
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
 }

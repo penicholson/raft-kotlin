@@ -59,28 +59,17 @@ class RaftNode(
         while (isRunning()) {
             val message = inputChannel.receive()
 
-            when (message) {
+            state = when (message) {
                 is StopNode -> {
-                    state = state.copy(status = NodeStatus.STOPPED)
+                    message.handle(state)
                 }
 
                 is CheckTimeout -> {
-                    val last: Instant = state.lastLeaderHeartbeat ?: Instant.DISTANT_PAST
-                    if (Clock.System.now() - last >= config.electionTimeout) {
-
-                    }
+                    message.handle(state, config)
                 }
 
                 is ExternalMessage -> {
-                    when (message.message) {
-                        is AppendEntries -> {
-                            state = state.copy(lastLeaderHeartbeat = Clock.System.now())
-                        }
-
-                        is RequestVote -> {
-
-                        }
-                    }
+                    message.handle(state, config)
                 }
             }
         }
@@ -94,6 +83,29 @@ class RaftNode(
 
     private suspend fun startElection() {
         state = state.copy(status = NodeStatus.CANDIDATE)
+    }
+}
+
+fun StopNode.handle(state: NodeState): NodeState = state.copy(status = NodeStatus.STOPPED)
+
+fun CheckTimeout.handle(state: NodeState, config: NodeConfig): NodeState {
+    val last: Instant = state.lastLeaderHeartbeat ?: Instant.DISTANT_PAST
+    if (Clock.System.now() - last >= config.electionTimeout) {
+
+    }
+
+    return state
+}
+
+fun ExternalMessage.handle(state: NodeState, config: NodeConfig): NodeState {
+    return when (message) {
+        is AppendEntries -> {
+            state.copy(lastLeaderHeartbeat = Clock.System.now())
+        }
+
+        is RequestVote -> {
+            state
+        }
     }
 }
 

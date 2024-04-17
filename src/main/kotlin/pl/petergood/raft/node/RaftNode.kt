@@ -91,7 +91,7 @@ fun StopNode.handle(state: NodeState): NodeState = state.copy(status = NodeStatu
 fun CheckTimeout.handle(state: NodeState, config: NodeConfig): NodeState {
     val last: Instant = state.lastLeaderHeartbeat ?: Instant.DISTANT_PAST
     if (Clock.System.now() - last >= config.electionTimeout) {
-
+        startElection()
     }
 
     return state
@@ -107,6 +107,10 @@ fun ExternalMessage.handle(state: NodeState, config: NodeConfig): NodeState {
             state
         }
     }
+}
+
+fun startElection() {
+
 }
 
 fun Node.launch(scope: CoroutineScope) {

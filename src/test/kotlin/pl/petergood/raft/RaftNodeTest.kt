@@ -18,7 +18,6 @@ class RaftNodeTest : FunSpec({
     test("nodes should start and stop") {
         val nodeRegistry = SingleMachineNodeRegistry()
         val nodes: List<Node> = List(5) { RaftNode(UUID.randomUUID(), nodeRegistry = nodeRegistry) }
-        nodeRegistry.registerMultipleNodes(nodes)
 
         runBlocking {
             nodes.forEach { it.launch(this) }

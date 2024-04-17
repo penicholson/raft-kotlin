@@ -1,12 +1,13 @@
 package pl.petergood.raft
 
+import pl.petergood.raft.node.NodeSocket
 import java.util.*
 
 sealed class Message
 class StopNode : Message()
 class CheckTimeout: Message()
 class ExternalMessage(
-    val sender: UUID,
+    val responseSocket: NodeSocket<ResponseMessage>,
     val message: RaftMessage
 ) : Message()
 
@@ -22,3 +23,5 @@ class RequestVote(
     val term: Int,
     val candidateId: Int
 ) : RaftMessage()
+
+sealed class ResponseMessage

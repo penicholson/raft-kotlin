@@ -7,6 +7,8 @@ import io.mockk.Called
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Deferred
 import pl.petergood.raft.RaftMessage
 import pl.petergood.raft.RequestVote
 import pl.petergood.raft.RequestVoteResponse
@@ -32,13 +34,13 @@ class NodeTransporterTest : DescribeSpec({
                 val nodeTransporter = NodeTransporterImpl(nodeRegistry)
                 val msg = RequestVote(0, UUID.randomUUID())
 
-                coEvery { nodeSocks[1].dispatch(msg) } returns CompletableFuture.completedFuture(RequestVoteResponse())
+                coEvery { nodeSocks[1].dispatch(msg) } returns CompletableDeferred(RequestVoteResponse(0, false))
 
                 val response = nodeTransporter.dispatch(nodeIds[1], msg)
 
                 coVerify { nodeSocks[1].dispatch(msg) }
                 response.isRight().shouldBeTrue()
-                response.onRight { it.get().shouldBeInstanceOf<RequestVoteResponse>() }
+                response.onRight { it.await().shouldBeInstanceOf<RequestVoteResponse>() }
             }
         }
 
@@ -61,12 +63,12 @@ class NodeTransporterTest : DescribeSpec({
                 val nodeTransporter = NodeTransporterImpl(nodeRegistry)
                 val msg = RequestVote(0, UUID.randomUUID())
 
-                coEvery { nodeSocks[0].dispatch(msg) } returns CompletableFuture.completedFuture(RequestVoteResponse())
-                coEvery { nodeSocks[2].dispatch(msg) } returns CompletableFuture.completedFuture(RequestVoteResponse())
+                coEvery { nodeSocks[0].dispatch(msg) } returns CompletableDeferred(RequestVoteResponse(0, false))
+                coEvery { nodeSocks[2].dispatch(msg) } returns CompletableDeferred(RequestVoteResponse(0, false))
 
                 val response = nodeTransporter.broadcast(nodeIds[1], msg)
                 response.isRight().shouldBeTrue()
-                response.onRight { it.forEach { res -> res.get().shouldBeInstanceOf<RequestVoteResponse>() } }
+                response.onRight { it.forEach { res -> res.await().shouldBeInstanceOf<RequestVoteResponse>() } }
 
                 coVerify { nodeSocks[0].dispatch(msg) }
                 coVerify { nodeSocks[1].dispatch(msg) wasNot Called }

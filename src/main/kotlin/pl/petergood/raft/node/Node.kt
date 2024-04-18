@@ -5,7 +5,7 @@ import pl.petergood.raft.Message
 import java.util.*
 
 interface Node {
-    suspend fun start(coroutineScope: CoroutineScope)
+    suspend fun start()
     suspend fun stop()
     suspend fun dispatchMessage(message: Message)
 

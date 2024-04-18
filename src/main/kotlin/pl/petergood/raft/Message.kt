@@ -7,6 +7,9 @@ import java.util.*
 sealed class Message
 class StopNode : Message()
 class CheckTimeout: Message()
+class RequestedVotingComplete(
+    val responses: List<RequestVoteResponse>
+): Message()
 class ExternalMessage(
     val responseSocket: AsyncNodeSocket<ResponseMessage>,
     val message: RaftMessage
@@ -27,4 +30,7 @@ class RequestVote(
 
 sealed class ResponseMessage
 
-class RequestVoteResponse : ResponseMessage()
+class RequestVoteResponse(
+    val term: Int,
+    val voteGranted: Boolean
+) : ResponseMessage()

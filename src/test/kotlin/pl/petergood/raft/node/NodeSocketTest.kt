@@ -4,8 +4,6 @@ import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.equals.shouldBeEqual
 import io.kotest.matchers.types.shouldBeInstanceOf
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.future.await
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import pl.petergood.raft.ExternalMessage
@@ -24,7 +22,7 @@ class NodeSocketTest : DescribeSpec({
             launch {
                 val msg = chan.receive()
                 msg.message shouldBeEqual message
-                msg.responseSocket.dispatch(RequestVoteResponse())
+                msg.responseSocket.dispatch(RequestVoteResponse(0, false))
             }
 
             val future = socket.dispatch(message)
@@ -44,7 +42,7 @@ class NodeSocketTest : DescribeSpec({
                     msg.shouldBeInstanceOf<RequestVoteResponse>()
                 }
 
-                socket.dispatch(RequestVoteResponse())
+                socket.dispatch(RequestVoteResponse(0, false))
             }
         }
     }

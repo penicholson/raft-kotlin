@@ -6,6 +6,7 @@ group = "org.example"
 version = "1.0-SNAPSHOT"
 
 val koTestVersion = "5.8.1"
+val mockkVersion = "1.13.10"
 
 repositories {
     mavenCentral()
@@ -20,6 +21,7 @@ dependencies {
 
     testImplementation("io.kotest:kotest-runner-junit5:$koTestVersion")
     testImplementation("io.kotest:kotest-assertions-core:$koTestVersion")
+    testImplementation("io.mockk:mockk:${mockkVersion}")
 }
 
 tasks.withType<Test>().configureEach {

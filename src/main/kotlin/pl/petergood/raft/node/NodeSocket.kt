@@ -13,9 +13,12 @@ interface NodeSocket<T> {
     suspend fun dispatch(message: T): CompletableFuture<ResponseMessage>
 }
 
-class SingleMachineResponseSocket(private val channel: Channel<ResponseMessage>,
-                                  private val coroutineScope: CoroutineScope) : NodeSocket<ResponseMessage> {
-    override suspend fun dispatch(message: ResponseMessage): CompletableFuture<ResponseMessage> {
+interface AsyncNodeSocket<T> {
+    suspend fun dispatch(message: T)
+}
+
+class SingleMachineResponseSocket(private val channel: Channel<ResponseMessage>) : AsyncNodeSocket<ResponseMessage> {
+    override suspend fun dispatch(message: ResponseMessage) {
         coroutineScope {
             launch {
                 channel.send(message)
@@ -24,15 +27,14 @@ class SingleMachineResponseSocket(private val channel: Channel<ResponseMessage>,
     }
 }
 
-class SingleMachineChannelingNodeSocket(private val channel: Channel<ExternalMessage>,
-                                        private val coroutineScope: CoroutineScope) : NodeSocket<RaftMessage> {
+class SingleMachineChannelingNodeSocket(private val channel: Channel<ExternalMessage>) : NodeSocket<RaftMessage> {
     override suspend fun dispatch(message: RaftMessage): CompletableFuture<ResponseMessage> {
         val completableFuture = CompletableFuture<ResponseMessage>()
 
         coroutineScope {
             launch {
                 val responseChannel: Channel<ResponseMessage> = Channel()
-                val responseSocket = SingleMachineResponseSocket(responseChannel, coroutineScope)
+                val responseSocket = SingleMachineResponseSocket(responseChannel)
                 val externalMessage = ExternalMessage(responseSocket, message)
 
                 channel.send(externalMessage)

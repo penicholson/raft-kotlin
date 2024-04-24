@@ -8,22 +8,19 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.Deferred
 import pl.petergood.raft.RaftMessage
 import pl.petergood.raft.RequestVote
 import pl.petergood.raft.RequestVoteResponse
-import java.util.*
-import java.util.concurrent.CompletableFuture
 
 class NodeTransporterTest : DescribeSpec({
     var nodeRegistry: NodeRegistry = SingleMachineNodeRegistry()
     var nodeSocks: List<NodeSocket<RaftMessage>> = listOf()
-    var nodeIds: List<UUID> = listOf()
+    var nodeIds: List<Int> = listOf()
 
     beforeEach {
         nodeRegistry = SingleMachineNodeRegistry()
         nodeSocks = List(3) { mockk<NodeSocket<RaftMessage>>() }
-        nodeIds = List(3) { UUID.randomUUID() }
+        nodeIds = List(3) { it }
 
         nodeSocks.forEachIndexed { i, _ -> nodeRegistry.registerNode(nodeIds[i], nodeSocks[i]) }
     }
@@ -32,7 +29,7 @@ class NodeTransporterTest : DescribeSpec({
         describe("when node is found") {
             it("dispatches message to correct node") {
                 val nodeTransporter = NodeTransporterImpl(nodeRegistry)
-                val msg = RequestVote(0, UUID.randomUUID())
+                val msg = RequestVote(0, 0)
 
                 coEvery { nodeSocks[1].dispatch(msg) } returns CompletableDeferred(RequestVoteResponse(0, false))
 
@@ -47,9 +44,9 @@ class NodeTransporterTest : DescribeSpec({
         describe("when node is not found") {
             it("returns error") {
                 val nodeTransporter = NodeTransporterImpl(nodeRegistry)
-                val msg = RequestVote(0, UUID.randomUUID())
+                val msg = RequestVote(0, 0)
 
-                val response = nodeTransporter.dispatch(UUID.randomUUID(), msg)
+                val response = nodeTransporter.dispatch(10, msg)
 
                 response.isLeft().shouldBeTrue()
                 response.onLeft { it.shouldBeInstanceOf<Error>() }
@@ -61,7 +58,7 @@ class NodeTransporterTest : DescribeSpec({
         describe("when no errors occur") {
             it("broadcasts message to all nodes except for sender") {
                 val nodeTransporter = NodeTransporterImpl(nodeRegistry)
-                val msg = RequestVote(0, UUID.randomUUID())
+                val msg = RequestVote(0, 0)
 
                 coEvery { nodeSocks[0].dispatch(msg) } returns CompletableDeferred(RequestVoteResponse(0, false))
                 coEvery { nodeSocks[2].dispatch(msg) } returns CompletableDeferred(RequestVoteResponse(0, false))

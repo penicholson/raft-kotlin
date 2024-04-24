@@ -10,19 +10,19 @@ import java.util.*
 import java.util.concurrent.CompletableFuture
 
 interface NodeTransporter {
-    suspend fun dispatch(nodeId: UUID, message: RaftMessage) : Either<Error, Deferred<ResponseMessage>>
-    suspend fun broadcast(currentNodeId: UUID, message: RaftMessage) : Either<Error, List<Deferred<ResponseMessage>>>
+    suspend fun dispatch(nodeId: Int, message: RaftMessage) : Either<Error, Deferred<ResponseMessage>>
+    suspend fun broadcast(currentNodeId: Int, message: RaftMessage) : Either<Error, List<Deferred<ResponseMessage>>>
 }
 
 class Error
 
 class NodeTransporterImpl(private val nodeRegistry: NodeRegistry) : NodeTransporter {
-    override suspend fun dispatch(nodeId: UUID, message: RaftMessage): Either<Error, Deferred<ResponseMessage>> =
+    override suspend fun dispatch(nodeId: Int, message: RaftMessage): Either<Error, Deferred<ResponseMessage>> =
         Option.fromNullable(nodeRegistry.getNodeSocket(nodeId))
             .toEither { Error() }
             .map { it.dispatch(message) }
 
-    override suspend fun broadcast(currentNodeId: UUID, message: RaftMessage): Either<Error, List<Deferred<ResponseMessage>>> = either {
+    override suspend fun broadcast(currentNodeId: Int, message: RaftMessage): Either<Error, List<Deferred<ResponseMessage>>> = either {
         nodeRegistry.getAllNodes()
             .filter { it != currentNodeId }
             .map { dispatch(it, message).bind() }

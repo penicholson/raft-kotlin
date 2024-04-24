@@ -5,32 +5,32 @@ import pl.petergood.raft.node.NodeSocket
 import java.util.*
 
 sealed class Message
-class StopNode : Message()
-class CheckTimeout: Message()
+data object StopNode : Message()
+data object CheckTimeout: Message()
 class RequestedVotingComplete(
     val responses: List<RequestVoteResponse>
 ): Message()
-class ExternalMessage(
+data class ExternalMessage(
     val responseSocket: AsyncNodeSocket<ResponseMessage>,
     val message: RaftMessage
 ) : Message()
 
 sealed class RaftMessage
 
-class AppendEntries(
+data class AppendEntries(
     val term: Int,
     val leaderId: UUID,
     val entires: Array<Entry>
 ) : RaftMessage()
 
-class RequestVote(
+data class RequestVote(
     val term: Int,
-    val candidateId: UUID
+    val candidateId: Int
 ) : RaftMessage()
 
 sealed class ResponseMessage
 
-class RequestVoteResponse(
+data class RequestVoteResponse(
     val term: Int,
     val voteGranted: Boolean
 ) : ResponseMessage()

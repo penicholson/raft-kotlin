@@ -3,28 +3,35 @@ package pl.petergood.raft
 import io.kotest.assertions.nondeterministic.eventually
 import io.kotest.common.runBlocking
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.collections.shouldContainAll
 import io.kotest.matchers.shouldBe
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
 import pl.petergood.raft.node.*
-import java.util.*
 import kotlin.time.Duration.Companion.seconds
 
 class RaftNodeTest : FunSpec({
-    test("nodes should start and stop") {
+    test("nodes should start, elect leader, and stop") {
         val nodeRegistry = SingleMachineNodeRegistry()
         val nodeTransporter = NodeTransporterImpl(nodeRegistry)
-        val nodeConfig = NodeConfig(nodeRegistry = nodeRegistry)
-
-        val nodes: List<Node> = List(1) { RaftNode(UUID.randomUUID(), nodeConfig, nodeTransporter) }
+        val nodeConfig = NodeConfig()
 
         runBlocking {
-            nodes.forEach { it.start() }
+            coroutineScope {
+                val nodes: List<Node> = List(3) {
+                    val chan: Channel<Message> = Channel()
+                    val node = RaftNode(it, nodeConfig, nodeTransporter, this, chan)
+                    nodeRegistry.registerNode(node.getId(), SingleMachineChannelingNodeSocket(chan, this))
 
-            launch {
-                delay(500)
+                    node
+                }
+
+                nodes.forEach { it.start() }
+                eventually(5.seconds) {
+                    nodes.map { it.getStatus() } shouldContainAll listOf(NodeStatus.FOLLOWER, NodeStatus.FOLLOWER, NodeStatus.LEADER)
+                }
+
                 nodes.forEach { it.stop() }
-
                 eventually(5.seconds) {
                     nodes.forEach { it.isRunning() shouldBe false }
                 }

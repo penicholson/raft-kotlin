@@ -6,6 +6,7 @@ import java.util.*
 interface NodeRegistry {
     fun registerNode(nodeId: Int, nodeSocket: NodeSocket<RaftMessage>)
     fun getAllNodes(): Collection<Int>
+    fun getNumberOfNodes(): Int
 
     fun getNodeSocket(nodeId: Int): NodeSocket<RaftMessage>?
 }
@@ -18,6 +19,7 @@ class SingleMachineNodeRegistry : NodeRegistry {
     }
 
     override fun getAllNodes(): Collection<Int> = nodes.keys
+    override fun getNumberOfNodes(): Int = nodes.size
 
     override fun getNodeSocket(nodeId: Int): NodeSocket<RaftMessage>? = nodes[nodeId]
 }

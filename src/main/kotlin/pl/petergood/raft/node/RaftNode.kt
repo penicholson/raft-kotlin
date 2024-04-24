@@ -8,18 +8,27 @@ import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
 import pl.petergood.raft.*
 import java.util.*
+import kotlin.math.log
+import kotlin.random.Random
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
+import kotlin.time.DurationUnit
 
 data class NodeState(
     val currentTerm: Int = 0,
     val votedFor: UUID? = null,
     val status: NodeStatus = NodeStatus.STOPPED,
-    val lastLeaderHeartbeat: Instant? = null
+    val lastLeaderHeartbeat: Instant? = null,
+
+    // The term in which this node last voted
+    val voteCastInTerm: Int = -1
 )
 
 data class NodeConfig(
     val electionTimeout: Duration = 1.seconds,
+    val electionTimeoutVariance: Duration = 1000.milliseconds,
+    val leaderHeartbeatInterval: Duration = 500.milliseconds
 )
 
 enum class NodeStatus {
@@ -40,6 +49,7 @@ class RaftNode(
     private val id: Int,
     private val config: NodeConfig,
     private val nodeTransporter: NodeTransporter,
+    private val nodeRegistry: NodeRegistry,
     private val coroutineScope: CoroutineScope,
     private val inputChannel: Channel<Message> = Channel()
 ) : Node {
@@ -49,6 +59,10 @@ class RaftNode(
     // job periodically checking if heartbeats are being received from leader
     var timeoutJob: Job? = null
 
+    // Job that periodically dispatches heartbeat message to followers
+    // This job is only active when the current node is a leader
+    var leaderHeartbeatJob: Job? = null
+
     // represents state of Node
     private var state = NodeState(status = NodeStatus.FOLLOWER)
 
@@ -57,8 +71,11 @@ class RaftNode(
     override suspend fun start() {
         timeoutJob = coroutineScope.launch {
             while (true) {
+                // select random delay variance from interval [0, electionTimeoutVariance]
+                val nextVariance = Random.nextInt(config.electionTimeoutVariance.toInt(DurationUnit.MILLISECONDS))
+                delay(config.electionTimeout + nextVariance.milliseconds)
+
                 inputChannel.send(CheckTimeout)
-                delay(config.electionTimeout)
             }
         }
 
@@ -100,18 +117,23 @@ class RaftNode(
             }
         }
 
+        logger.debug { "Starting shutdown" }
         handleShutdown()
     }
 
     private suspend fun handleShutdown() {
         timeoutJob?.cancelAndJoin()
+        leaderHeartbeatJob?.cancelAndJoin()
+        logger.debug { "Shutdown complete" }
     }
 
     fun StopNode.handle(state: NodeState): NodeState = state.copy(status = NodeStatus.STOPPED)
 
     suspend fun CheckTimeout.handle(state: NodeState): NodeState {
         val last: Instant = state.lastLeaderHeartbeat ?: Instant.DISTANT_PAST
-        if (Clock.System.now() - last >= config.electionTimeout && getStatus() != NodeStatus.CANDIDATE) {
+
+        // We trigger a new election if no heartbeat has been received from the leader within the timeout
+        if (Clock.System.now() - last >= config.electionTimeout && state.status != NodeStatus.LEADER) {
             return startElection(state)
         }
 
@@ -119,20 +141,39 @@ class RaftNode(
     }
 
     // handling for Raft messages
-    fun ExternalMessage.handle(state: NodeState): NodeState {
+    suspend fun ExternalMessage.handle(state: NodeState): NodeState {
         return when (message) {
+            // new entries
             is AppendEntries -> {
                 state.copy(lastLeaderHeartbeat = Clock.System.now())
             }
 
+            // vote request from another node
             is RequestVote -> {
-                state
+                if (message.term <= state.currentTerm || state.voteCastInTerm >= message.term) {
+                    // got voting request from outdated node
+                    responseSocket.dispatch(RequestVoteResponse(state.currentTerm, false))
+                    return state
+                }
+
+                responseSocket.dispatch(RequestVoteResponse(state.currentTerm, true))
+                state.copy(voteCastInTerm = state.currentTerm)
             }
         }
     }
 
+    // invoked when a vote initiated by this node has been completed (all other nodes have voted)
     fun RequestedVotingComplete.handle(state: NodeState): NodeState {
-        return state
+        val votesPerTerm = responses.groupBy { it.term }
+        // Under typical circumstances this should be currentTerm - 1
+        val prevTerm = votesPerTerm.keys.maxOf { it }
+        val won = votesPerTerm[prevTerm]
+            ?.count { it.voteGranted }
+
+            // +1 is the current node
+            ?.let { it + 1 > nodeRegistry.getNumberOfNodes() / 2} ?: false
+
+        return if (won) transitionToLeader(state) else state
     }
 
     private suspend fun startElection(state: NodeState): NodeState {
@@ -146,17 +187,29 @@ class RaftNode(
                         it.awaitAll().map { responseMessage ->
                             when (responseMessage) {
                                 is RequestVoteResponse -> {
-                                    logger.debug { "Got resp" }
                                     responseMessage
                                 }
                             }
                         }
                     }
-
-                logger.debug { "OUT" }
+                    .onRight { dispatchMessage(RequestedVotingComplete(it)) }
             }
         }
 
-        return state.copy(currentTerm = newTerm, status = NodeStatus.CANDIDATE)
+        // Go into candidate state, vote for itself
+        return state.copy(currentTerm = newTerm, status = NodeStatus.CANDIDATE, voteCastInTerm = newTerm)
+    }
+
+    private fun transitionToLeader(state: NodeState): NodeState {
+        logger.debug { "Node $id transitioning to leader" }
+
+        leaderHeartbeatJob = coroutineScope.launch {
+            while (true) {
+                nodeTransporter.broadcast(id, AppendEntries(state.currentTerm, id, emptyList()))
+                delay(config.leaderHeartbeatInterval)
+            }
+        }
+
+        return state.copy(status = NodeStatus.LEADER)
     }
 }

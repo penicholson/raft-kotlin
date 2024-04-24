@@ -20,19 +20,19 @@ class RaftNodeTest : FunSpec({
             coroutineScope {
                 val nodes: List<Node> = List(3) {
                     val chan: Channel<Message> = Channel()
-                    val node = RaftNode(it, nodeConfig, nodeTransporter, this, chan)
+                    val node = RaftNode(it, nodeConfig, nodeTransporter, nodeRegistry, this, chan)
                     nodeRegistry.registerNode(node.getId(), SingleMachineChannelingNodeSocket(chan, this))
 
                     node
                 }
 
                 nodes.forEach { it.start() }
-                eventually(5.seconds) {
+                eventually(10.seconds) {
                     nodes.map { it.getStatus() } shouldContainAll listOf(NodeStatus.FOLLOWER, NodeStatus.FOLLOWER, NodeStatus.LEADER)
                 }
 
                 nodes.forEach { it.stop() }
-                eventually(5.seconds) {
+                eventually(10.seconds) {
                     nodes.forEach { it.isRunning() shouldBe false }
                 }
             }

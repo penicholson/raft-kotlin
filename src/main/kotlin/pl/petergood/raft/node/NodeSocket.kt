@@ -5,7 +5,9 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import pl.petergood.raft.ExternalMessage
 import pl.petergood.raft.RaftMessage
+import pl.petergood.raft.RequestVoteResponse
 import pl.petergood.raft.ResponseMessage
+import java.lang.Exception
 
 interface NodeSocket<T> {
     suspend fun dispatch(message: T): Deferred<ResponseMessage>
@@ -17,9 +19,13 @@ interface AsyncNodeSocket<T> {
 
 class SingleMachineResponseSocket(private val channel: Channel<ResponseMessage>,
                                   private val coroutineScope: CoroutineScope) : AsyncNodeSocket<ResponseMessage> {
+                                      private val logger = KotlinLogging.logger {  }
+
     override suspend fun dispatch(message: ResponseMessage) {
         coroutineScope.launch {
+            logger.debug { "Sending1" }
             channel.send(message)
+            logger.debug { "Out1" }
         }
     }
 }
@@ -32,13 +38,23 @@ class SingleMachineChannelingNodeSocket(private val channel: Channel<in External
         logger.debug { "Dispatching message $message" }
 
         return coroutineScope.async {
-            val responseChannel: Channel<ResponseMessage> = Channel()
-            val responseSocket = SingleMachineResponseSocket(responseChannel, coroutineScope)
-            val externalMessage = ExternalMessage(responseSocket, message)
+            try {
+                val responseChannel: Channel<ResponseMessage> = Channel()
+                val responseSocket = SingleMachineResponseSocket(responseChannel, coroutineScope)
+                val externalMessage = ExternalMessage(responseSocket, message)
 
-            channel.send(externalMessage)
+                logger.debug { "Sending2" }
+                channel.send(externalMessage)
+                logger.debug { "Out2" }
 
-            responseChannel.receive()
+                logger.debug { "Sending3 $externalMessage" }
+                val res = responseChannel.receive()
+                logger.debug { "Out3" }
+                res
+            } catch (e: Exception) {
+                logger.debug { "Cancelled3 $e" }
+                throw e
+            }
         }
     }
 }

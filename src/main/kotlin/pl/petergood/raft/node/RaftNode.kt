@@ -70,12 +70,16 @@ class RaftNode(
 
     override suspend fun start() {
         timeoutJob = coroutineScope.launch {
-            while (true) {
-                // select random delay variance from interval [0, electionTimeoutVariance]
-                val nextVariance = Random.nextInt(config.electionTimeoutVariance.toInt(DurationUnit.MILLISECONDS))
-                delay(config.electionTimeout + nextVariance.milliseconds)
+            try {
+                while (true) {
+                    // select random delay variance from interval [0, electionTimeoutVariance]
+                    val nextVariance = Random.nextInt(config.electionTimeoutVariance.toInt(DurationUnit.MILLISECONDS))
+                    delay(config.electionTimeout + nextVariance.milliseconds)
 
-                inputChannel.send(CheckTimeout)
+                    inputChannel.send(CheckTimeout)
+                }
+            } catch (e: CancellationException) {
+                logger.debug { e }
             }
         }
 
@@ -145,7 +149,15 @@ class RaftNode(
         return when (message) {
             // new entries
             is AppendEntries -> {
-                state.copy(lastLeaderHeartbeat = Clock.System.now())
+                if (message.term > state.currentTerm) {
+                    if (state.status != NodeStatus.FOLLOWER) {
+                        logger.debug { "Node $id transitioning from ${state.status} to FOLLOWER" }
+                    }
+
+                    state.copy(lastLeaderHeartbeat = Clock.System.now(), currentTerm = message.term, status = NodeStatus.FOLLOWER)
+                } else {
+                    state.copy(lastLeaderHeartbeat = Clock.System.now())
+                }
             }
 
             // vote request from another node
@@ -173,7 +185,8 @@ class RaftNode(
             // +1 is the current node
             ?.let { it + 1 > nodeRegistry.getNumberOfNodes() / 2} ?: false
 
-        return if (won) transitionToLeader(state) else state
+        // Transition to leader state or go back to follower
+        return if (won) transitionToLeader(state) else state.copy(status = NodeStatus.FOLLOWER)
     }
 
     private suspend fun startElection(state: NodeState): NodeState {
@@ -182,6 +195,7 @@ class RaftNode(
 
         coroutineScope.launch {
             coroutineScope {
+                logger.debug { "Sending4" }
                 nodeTransporter.broadcast(id, RequestVote(newTerm, id))
                     .map {
                         it.awaitAll().map { responseMessage ->
@@ -192,7 +206,8 @@ class RaftNode(
                             }
                         }
                     }
-                    .onRight { dispatchMessage(RequestedVotingComplete(it)) }
+                    .onRight { logger.debug { "Out4" }
+                        dispatchMessage(RequestedVotingComplete(it)) }
             }
         }
 
@@ -204,9 +219,13 @@ class RaftNode(
         logger.debug { "Node $id transitioning to leader" }
 
         leaderHeartbeatJob = coroutineScope.launch {
-            while (true) {
-                nodeTransporter.broadcast(id, AppendEntries(state.currentTerm, id, emptyList()))
-                delay(config.leaderHeartbeatInterval)
+            try {
+                while (true) {
+                    nodeTransporter.broadcast(id, AppendEntries(state.currentTerm, id, emptyList()))
+                    delay(config.leaderHeartbeatInterval)
+                }
+            } catch (e: CancellationException) {
+                logger.debug { "Transition cancelled: $e" }
             }
         }
 

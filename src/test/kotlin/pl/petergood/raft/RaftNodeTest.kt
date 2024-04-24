@@ -1,10 +1,13 @@
 package pl.petergood.raft
 
+import io.github.oshai.kotlinlogging.KotlinLogging
 import io.kotest.assertions.nondeterministic.eventually
 import io.kotest.common.runBlocking
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldContainAll
 import io.kotest.matchers.shouldBe
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import pl.petergood.raft.node.*
@@ -15,6 +18,8 @@ class RaftNodeTest : FunSpec({
         val nodeRegistry = SingleMachineNodeRegistry()
         val nodeTransporter = NodeTransporterImpl(nodeRegistry)
         val nodeConfig = NodeConfig()
+
+        val logger = KotlinLogging.logger { }
 
         runBlocking {
             coroutineScope {
@@ -35,7 +40,18 @@ class RaftNodeTest : FunSpec({
                 eventually(10.seconds) {
                     nodes.forEach { it.isRunning() shouldBe false }
                 }
+
+                nodes.forEach { when(it) {
+                    is RaftNode -> {
+                        logger.debug { "Cancelling ${it.getId()}" }
+                        it.mainJob?.cancelAndJoin()
+                    }
+                } }
+
+                logger.debug { "OUT" }
             }
+            logger.debug { "OUT2" }
         }
+        logger.debug { "OUT3" }
     }
 })

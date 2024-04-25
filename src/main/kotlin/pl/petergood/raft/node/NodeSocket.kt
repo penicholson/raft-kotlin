@@ -23,9 +23,7 @@ class SingleMachineResponseSocket(private val channel: Channel<ResponseMessage>,
 
     override suspend fun dispatch(message: ResponseMessage) {
         coroutineScope.launch {
-            logger.debug { "Sending1" }
             channel.send(message)
-            logger.debug { "Out1" }
         }
     }
 }
@@ -38,23 +36,13 @@ class SingleMachineChannelingNodeSocket(private val channel: Channel<in External
         logger.debug { "Dispatching message $message" }
 
         return coroutineScope.async {
-            try {
-                val responseChannel: Channel<ResponseMessage> = Channel()
-                val responseSocket = SingleMachineResponseSocket(responseChannel, coroutineScope)
-                val externalMessage = ExternalMessage(responseSocket, message)
+            val responseChannel: Channel<ResponseMessage> = Channel()
+            val responseSocket = SingleMachineResponseSocket(responseChannel, coroutineScope)
+            val externalMessage = ExternalMessage(responseSocket, message)
 
-                logger.debug { "Sending2" }
-                channel.send(externalMessage)
-                logger.debug { "Out2" }
+            channel.send(externalMessage)
 
-                logger.debug { "Sending3 $externalMessage" }
-                val res = responseChannel.receive()
-                logger.debug { "Out3" }
-                res
-            } catch (e: Exception) {
-                logger.debug { "Cancelled3 $e" }
-                throw e
-            }
+            responseChannel.receive()
         }
     }
 }

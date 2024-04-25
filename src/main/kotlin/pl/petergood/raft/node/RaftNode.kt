@@ -49,9 +49,7 @@ class RaftNode(
     private val id: Int,
     private val config: NodeConfig,
     private val nodeTransporter: NodeTransporter,
-    private val nodeRegistry: NodeRegistry,
-    private val coroutineScope: CoroutineScope,
-    private val inputChannel: Channel<Message> = Channel()
+    private val nodeRegistry: NodeRegistry
 ) : Node {
     // main coroutine executing this node's runtime loop
     var mainJob: Job? = null
@@ -65,6 +63,12 @@ class RaftNode(
 
     // represents state of Node
     private var state = NodeState(status = NodeStatus.FOLLOWER)
+
+    // the coroutine scope all coroutines related to this node will be launched in
+    private val coroutineScope = CoroutineScope(SupervisorJob())
+
+    // main Node channel
+    private val inputChannel: Channel<Message> = Channel()
 
     private val logger = KotlinLogging.logger {}
 
@@ -84,6 +88,8 @@ class RaftNode(
         }
 
         mainJob = coroutineScope.launch {
+            nodeRegistry.registerNode(id, SingleMachineChannelingNodeSocket(inputChannel, coroutineScope))
+
             handler()
         }
     }
@@ -194,21 +200,17 @@ class RaftNode(
         val newTerm = state.currentTerm + 1
 
         coroutineScope.launch {
-            coroutineScope {
-                logger.debug { "Sending4" }
-                nodeTransporter.broadcast(id, RequestVote(newTerm, id))
-                    .map {
-                        it.awaitAll().map { responseMessage ->
-                            when (responseMessage) {
-                                is RequestVoteResponse -> {
-                                    responseMessage
-                                }
+            nodeTransporter.broadcast(id, RequestVote(newTerm, id))
+                .map {
+                    it.awaitAll().map { responseMessage ->
+                        when (responseMessage) {
+                            is RequestVoteResponse -> {
+                                responseMessage
                             }
                         }
                     }
-                    .onRight { logger.debug { "Out4" }
-                        dispatchMessage(RequestedVotingComplete(it)) }
-            }
+                }
+                .onRight { dispatchMessage(RequestedVotingComplete(it)) }
         }
 
         // Go into candidate state, vote for itself

@@ -83,7 +83,7 @@ class RaftNode(
                     inputChannel.send(CheckTimeout)
                 }
             } catch (e: CancellationException) {
-                logger.debug { e }
+                logger.debug { "Timeout job ($id) cancelled: $e" }
             }
         }
 
@@ -182,6 +182,8 @@ class RaftNode(
 
     // invoked when a vote initiated by this node has been completed (all other nodes have voted)
     fun RequestedVotingComplete.handle(state: NodeState): NodeState {
+        logger.debug { "Handling votes ($id): $responses" }
+
         val votesPerTerm = responses.groupBy { it.term }
         // Under typical circumstances this should be currentTerm - 1
         val prevTerm = votesPerTerm.keys.maxOf { it }
@@ -192,7 +194,10 @@ class RaftNode(
             ?.let { it + 1 > nodeRegistry.getNumberOfNodes() / 2} ?: false
 
         // Transition to leader state or go back to follower
-        return if (won) transitionToLeader(state) else state.copy(status = NodeStatus.FOLLOWER)
+        return if (won) transitionToLeader(state) else {
+            logger.debug { "Transitioning ($id) from ${state.status} to FOLLOWER" }
+            state.copy(status = NodeStatus.FOLLOWER)
+        }
     }
 
     private suspend fun startElection(state: NodeState): NodeState {
@@ -218,7 +223,7 @@ class RaftNode(
     }
 
     private fun transitionToLeader(state: NodeState): NodeState {
-        logger.debug { "Node $id transitioning to leader" }
+        logger.debug { "Transitioning ($id) from ${state.status} to LEADER" }
 
         leaderHeartbeatJob = coroutineScope.launch {
             try {
@@ -227,7 +232,7 @@ class RaftNode(
                     delay(config.leaderHeartbeatInterval)
                 }
             } catch (e: CancellationException) {
-                logger.debug { "Transition cancelled: $e" }
+                logger.debug { "Leadership heartbeat job ($id) cancelled: $e" }
             }
         }
 

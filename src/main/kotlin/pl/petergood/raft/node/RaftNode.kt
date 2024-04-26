@@ -168,7 +168,7 @@ class RaftNode(
 
             // vote request from another node
             is RequestVote -> {
-                if (message.term <= state.currentTerm || state.voteCastInTerm >= message.term) {
+                if (message.shouldGrantVote(state)) {
                     // got voting request from outdated node
                     responseSocket.dispatch(RequestVoteResponse(state.currentTerm, false))
                     return state
@@ -184,17 +184,8 @@ class RaftNode(
     fun RequestedVotingComplete.handle(state: NodeState): NodeState {
         logger.debug { "Handling votes ($id): $responses" }
 
-        val votesPerTerm = responses.groupBy { it.term }
-        // Under typical circumstances this should be currentTerm - 1
-        val prevTerm = votesPerTerm.keys.maxOf { it }
-        val won = votesPerTerm[prevTerm]
-            ?.count { it.voteGranted }
-
-            // +1 is the current node
-            ?.let { it + 1 > nodeRegistry.getNumberOfNodes() / 2} ?: false
-
         // Transition to leader state or go back to follower
-        return if (won) transitionToLeader(state) else {
+        return if (hasNodeWon(nodeRegistry.getNumberOfNodes())) transitionToLeader(state) else {
             logger.debug { "Transitioning ($id) from ${state.status} to FOLLOWER" }
             state.copy(status = NodeStatus.FOLLOWER)
         }

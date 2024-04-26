@@ -42,3 +42,8 @@ data class RequestVoteResponse(
     val term: Int,
     val voteGranted: Boolean
 ) : ResponseMessage()
+
+data class AppendEntriesResponse(
+    val term: Int,
+    val success: Boolean
+) : ResponseMessage()

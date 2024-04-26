@@ -16,6 +16,7 @@ import pl.petergood.raft.voting.hasNodeWon
 import pl.petergood.raft.voting.shouldGrantVote
 import java.util.*
 import kotlin.random.Random
+import kotlin.system.exitProcess
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
@@ -210,7 +211,7 @@ class RaftNode(
         }
 
         val logEntry = log.appendEntry(value)
-        replicateToNodes(logEntry, id, nodeRegistry)
+        val res = replicateToNodes(logEntry, id, state.currentTerm, nodeRegistry.getNumberOfNodes(), nodeTransporter, coroutineScope)
 
         return state
     }
@@ -234,13 +235,19 @@ class RaftNode(
         coroutineScope.launch {
             nodeTransporter.broadcast(id, RequestVote(newTerm, id))
                 .map {
-                    it.awaitAll().map { responseMessage ->
-                        when (responseMessage) {
-                            is RequestVoteResponse -> {
-                                responseMessage
+                    it.awaitAll()
+                        .map { responseMessage ->
+                            when (responseMessage) {
+                                is RequestVoteResponse -> {
+                                    responseMessage
+                                }
+                                else -> {
+                                    logger.error { "Fatal error - got illegal response $responseMessage" }
+                                    //TODO: handle this in a better way
+                                    throw IllegalArgumentException()
+                                }
                             }
                         }
-                    }
                 }
                 .onRight { inputChannel.send(RequestedVotingComplete(it)) }
         }

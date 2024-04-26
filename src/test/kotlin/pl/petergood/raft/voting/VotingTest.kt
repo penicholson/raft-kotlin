@@ -1,11 +1,12 @@
-package pl.petergood.raft
+package pl.petergood.raft.voting
 
 import io.kotest.core.spec.style.DescribeSpec
 import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
+import pl.petergood.raft.RequestVote
+import pl.petergood.raft.RequestVoteResponse
+import pl.petergood.raft.RequestedVotingComplete
 import pl.petergood.raft.node.NodeState
-import pl.petergood.raft.node.hasNodeWon
-import pl.petergood.raft.node.shouldGrantVote
 
 class VotingTest : DescribeSpec({
     describe("RequestedVotingComplete") {

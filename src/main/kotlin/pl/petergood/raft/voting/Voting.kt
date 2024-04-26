@@ -1,7 +1,8 @@
-package pl.petergood.raft.node
+package pl.petergood.raft.voting
 
 import pl.petergood.raft.RequestVote
 import pl.petergood.raft.RequestedVotingComplete
+import pl.petergood.raft.node.NodeState
 import kotlin.math.ceil
 
 fun RequestedVotingComplete.hasNodeWon(numberOfNodes: Int): Boolean {

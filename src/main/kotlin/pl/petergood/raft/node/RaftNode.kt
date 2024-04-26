@@ -1,14 +1,20 @@
 package pl.petergood.raft.node
 
-import arrow.core.right
+import arrow.core.Option
+import arrow.core.none
+import arrow.core.some
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.datetime.Clock
 import kotlinx.datetime.Instant
 import pl.petergood.raft.*
+import pl.petergood.raft.log.Log
+import pl.petergood.raft.log.LogEntry
+import pl.petergood.raft.log.replicateToNodes
+import pl.petergood.raft.voting.hasNodeWon
+import pl.petergood.raft.voting.shouldGrantVote
 import java.util.*
-import kotlin.math.log
 import kotlin.random.Random
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
@@ -38,18 +44,24 @@ enum class NodeStatus {
 interface Node {
     suspend fun start()
     suspend fun stop()
-    suspend fun dispatchMessage(message: Message)
 
     fun isRunning(): Boolean
     fun getId(): Int
     fun getStatus(): NodeStatus
+    fun getLog(): Log
+
+    suspend fun store(value: Any): Option<StorageError>
 }
+
+sealed class StorageError
+data object NodeNotLeaderError : StorageError()
 
 class RaftNode(
     private val id: Int,
     private val config: NodeConfig,
     private val nodeTransporter: NodeTransporter,
-    private val nodeRegistry: NodeRegistry
+    private val nodeRegistry: NodeRegistry,
+    private val log: Log
 ) : Node {
     // main coroutine executing this node's runtime loop
     var mainJob: Job? = null
@@ -98,13 +110,10 @@ class RaftNode(
         inputChannel.send(StopNode)
     }
 
-    override suspend fun dispatchMessage(message: Message) {
-        inputChannel.send(message)
-    }
-
     override fun isRunning(): Boolean = state.status != NodeStatus.STOPPED
     override fun getId(): Int = id
     override fun getStatus(): NodeStatus = state.status
+    override fun getLog(): Log = log
 
     // main node handler function
     private suspend fun handler() {
@@ -120,6 +129,9 @@ class RaftNode(
                     message.handle(state)
 
                 is RequestedVotingComplete ->
+                    message.handle(state)
+
+                is StoreInLog ->
                     message.handle(state)
 
                 is ExternalMessage ->
@@ -191,6 +203,30 @@ class RaftNode(
         }
     }
 
+    suspend fun StoreInLog.handle(state: NodeState): NodeState {
+        if (state.status != NodeStatus.LEADER) {
+            logger.error { "Fatal error - node $id with status ${state.status} trying to store value in log" }
+            stop()
+        }
+
+        val logEntry = log.appendEntry(value)
+        replicateToNodes(logEntry, id, nodeRegistry)
+
+        return state
+    }
+
+    // exposed function to add entry to replicated log
+    override suspend fun store(value: Any): Option<StorageError> {
+        if (getStatus() != NodeStatus.LEADER) {
+            // TODO: maybe route this request to the leader?
+            NodeNotLeaderError.some()
+        }
+
+        inputChannel.send(StoreInLog(value))
+
+        return none()
+    }
+
     private suspend fun startElection(state: NodeState): NodeState {
         logger.debug { "Starting election on $id" }
         val newTerm = state.currentTerm + 1
@@ -206,7 +242,7 @@ class RaftNode(
                         }
                     }
                 }
-                .onRight { dispatchMessage(RequestedVotingComplete(it)) }
+                .onRight { inputChannel.send(RequestedVotingComplete(it)) }
         }
 
         // Go into candidate state, vote for itself

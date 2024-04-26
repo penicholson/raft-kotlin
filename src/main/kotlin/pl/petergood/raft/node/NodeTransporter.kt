@@ -6,8 +6,6 @@ import arrow.core.raise.either
 import kotlinx.coroutines.Deferred
 import pl.petergood.raft.RaftMessage
 import pl.petergood.raft.ResponseMessage
-import java.util.*
-import java.util.concurrent.CompletableFuture
 
 interface NodeTransporter {
     suspend fun dispatch(nodeId: Int, message: RaftMessage) : Either<Error, Deferred<ResponseMessage>>

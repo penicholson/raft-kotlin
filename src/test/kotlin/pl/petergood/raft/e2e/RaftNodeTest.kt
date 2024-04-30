@@ -61,7 +61,7 @@ class RaftNodeTest : DescribeSpec({
                 leader.store("Hello World!")
 
                 eventually(5.seconds) {
-                    leader.getLog().getEntries() shouldContainAll listOf(LogEntry(0, false, "Hello World!"))
+                    leader.getLog().getEntries() shouldContainAll listOf(LogEntry(0, 0, false, "Hello World!"))
                 }
             }
         }

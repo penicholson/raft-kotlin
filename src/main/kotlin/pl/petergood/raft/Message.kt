@@ -28,7 +28,9 @@ sealed class RaftMessage
 data class AppendEntries(
     val term: Int,
     val leaderId: Int,
-    val entries: List<LogEntry>
+    val entries: List<LogEntry>,
+    val prevLogIndex: Int,
+    val prevLogTerm: Int
 ) : RaftMessage()
 
 data class RequestVote(

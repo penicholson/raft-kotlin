@@ -11,6 +11,7 @@ import kotlinx.datetime.Instant
 import pl.petergood.raft.*
 import pl.petergood.raft.log.Log
 import pl.petergood.raft.log.LogEntry
+import pl.petergood.raft.log.handleNewEntries
 import pl.petergood.raft.log.replicateToNodes
 import pl.petergood.raft.voting.hasNodeWon
 import pl.petergood.raft.voting.shouldGrantVote
@@ -167,29 +168,12 @@ class RaftNode(
     suspend fun ExternalMessage.handle(state: NodeState): NodeState {
         return when (message) {
             // new entries
-            is AppendEntries -> {
-                if (message.term > state.currentTerm) {
-                    if (state.status != NodeStatus.FOLLOWER) {
-                        logger.debug { "Node $id transitioning from ${state.status} to FOLLOWER" }
-                    }
-
-                    state.copy(lastLeaderHeartbeat = Clock.System.now(), currentTerm = message.term, status = NodeStatus.FOLLOWER)
-                } else {
-                    state.copy(lastLeaderHeartbeat = Clock.System.now())
-                }
-            }
+            is AppendEntries ->
+                handleNewEntries(id, state, log, message, responseSocket)
 
             // vote request from another node
-            is RequestVote -> {
-                if (message.shouldGrantVote(state)) {
-                    // got voting request from outdated node
-                    responseSocket.dispatch(RequestVoteResponse(state.currentTerm, false))
-                    return state
-                }
-
-                responseSocket.dispatch(RequestVoteResponse(state.currentTerm, true))
-                state.copy(voteCastInTerm = state.currentTerm)
-            }
+            is RequestVote ->
+                message.handle(state, responseSocket)
         }
     }
 
@@ -210,10 +194,22 @@ class RaftNode(
             stop()
         }
 
-        val logEntry = log.appendEntry(value)
+        val logEntry = log.appendEntry(value, state.currentTerm)
         val res = replicateToNodes(logEntry, id, state.currentTerm, nodeRegistry.getNumberOfNodes(), nodeTransporter, coroutineScope)
 
         return state
+    }
+
+    // handle RequestVote
+    suspend fun RequestVote.handle(state: NodeState, responseSocket: AsyncNodeSocket<ResponseMessage>): NodeState {
+        if (shouldGrantVote(state)) {
+            // got voting request from outdated node
+            responseSocket.dispatch(RequestVoteResponse(state.currentTerm, false))
+            return state
+        }
+
+        responseSocket.dispatch(RequestVoteResponse(state.currentTerm, true))
+        return state.copy(voteCastInTerm = state.currentTerm)
     }
 
     // exposed function to add entry to replicated log
@@ -262,7 +258,7 @@ class RaftNode(
         leaderHeartbeatJob = coroutineScope.launch {
             try {
                 while (true) {
-                    nodeTransporter.broadcast(id, AppendEntries(state.currentTerm, id, emptyList()))
+                    nodeTransporter.broadcast(id, AppendEntries(state.currentTerm, id, emptyList(), 0, 0))
                     delay(config.leaderHeartbeatInterval)
                 }
             } catch (e: CancellationException) {

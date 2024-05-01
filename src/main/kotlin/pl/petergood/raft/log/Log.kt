@@ -22,8 +22,12 @@ data class LogEntry(
     val value: Any
 )
 
-class InMemoryLog : Log {
+class InMemoryLog(initialLog: List<LogEntry> = emptyList()) : Log {
     private val entryList: MutableList<LogEntry> = mutableListOf()
+
+    init {
+        entryList.addAll(initialLog)
+    }
 
     override fun appendEntry(value: Any, term: Int): LogEntry {
         val entry = LogEntry(entryList.size, term, false, value)

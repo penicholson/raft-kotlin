@@ -1,7 +1,9 @@
 package pl.petergood.raft.log
 
+import arrow.core.some
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.datetime.Clock
 import pl.petergood.raft.AppendEntries
 import pl.petergood.raft.AppendEntriesResponse
@@ -38,7 +40,7 @@ suspend fun handleNewEntries(nodeId: Int,
     if (appendEntries.term < state.currentTerm) {
         // reject AppendEntries due to stale term
         responseSocket.dispatch(AppendEntriesResponse(state.currentTerm, false))
-        return state.copy(lastLeaderHeartbeat = Clock.System.now())
+        return state
     }
 
     // if node was candidate but has lost election
@@ -54,17 +56,20 @@ suspend fun handleNewEntries(nodeId: Int,
     } else newState
 
     // log consistency check
-    log.findFirstIndex(appendEntries.prevLogIndex, appendEntries.prevLogTerm)
-        .onNone {
-            logger.debug { "Node $nodeId did not find matching index ${appendEntries.prevLogIndex} ${appendEntries.prevLogTerm}" }
-            responseSocket.dispatch(AppendEntriesResponse(state.currentTerm, false))
-            return newState1.copy(lastLeaderHeartbeat = Clock.System.now())
-        }
-        .onSome {
-            // overwrite all subsequent log entries (or do nothing if logs are consistent)
-            log.truncateFromIndex(it)
-            log.appendEntries(appendEntries.entries)
-        }
+    if (appendEntries.prevLogIndex == -1 && appendEntries.prevLogTerm == -1) {
+        0.some()
+    } else {
+        log.findFirstIndex(appendEntries.prevLogIndex, appendEntries.prevLogTerm)
+    }.onNone {
+        logger.debug { "Node $nodeId did not find matching index ${appendEntries.prevLogIndex} ${appendEntries.prevLogTerm}" }
+        responseSocket.dispatch(AppendEntriesResponse(state.currentTerm, false))
+        return newState1.copy(lastLeaderHeartbeat = Clock.System.now())
+    }
+    .onSome {
+        // overwrite all subsequent log entries (or do nothing if logs are consistent)
+        log.truncateFromIndex(it)
+        log.appendEntries(appendEntries.entries)
+    }
 
     responseSocket.dispatch(AppendEntriesResponse(newState1.currentTerm, true))
     return newState1.copy(lastLeaderHeartbeat = Clock.System.now())

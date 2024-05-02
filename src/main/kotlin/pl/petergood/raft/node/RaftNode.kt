@@ -50,6 +50,7 @@ interface Node {
     fun isRunning(): Boolean
     fun getId(): Int
     fun getStatus(): NodeStatus
+    fun getCurrentTerm(): Int
     fun getLog(): Log
 
     suspend fun store(value: Any): Option<StorageError>
@@ -116,6 +117,7 @@ class RaftNode(
     override fun getId(): Int = id
     override fun getStatus(): NodeStatus = state.status
     override fun getLog(): Log = log
+    override fun getCurrentTerm(): Int = state.currentTerm
 
     // main node handler function
     private suspend fun handler() {
@@ -195,7 +197,7 @@ class RaftNode(
         }
 
         val logEntry = log.appendEntry(value, state.currentTerm)
-        val res = replicateToNodes(logEntry, id, state.currentTerm, nodeRegistry.getNumberOfNodes(), nodeTransporter, coroutineScope)
+        replicateToNodes(logEntry, id, state.currentTerm, nodeRegistry.getNumberOfNodes(), nodeTransporter, coroutineScope)
 
         return state
     }
@@ -258,7 +260,7 @@ class RaftNode(
         leaderHeartbeatJob = coroutineScope.launch {
             try {
                 while (true) {
-                    nodeTransporter.broadcast(id, AppendEntries(state.currentTerm, id, emptyList(), 0, 0))
+                    nodeTransporter.broadcast(id, AppendEntries(state.currentTerm, id, emptyList(), -1, -1))
                     delay(config.leaderHeartbeatInterval)
                 }
             } catch (e: CancellationException) {

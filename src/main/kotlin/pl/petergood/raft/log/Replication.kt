@@ -26,10 +26,22 @@ suspend fun replicateToNodes(logEntry: LogEntry,
                              numberOfNodes: Int,
                              nodeTransporter: NodeTransporter,
                              coroutineScope: CoroutineScope): ReplicationResult {
-    val message = AppendEntries(term, leaderId, listOf(logEntry), 0, 0)
-    val responses = broadcastTillMajorityRespond(nodeTransporter, leaderId, numberOfNodes, message, coroutineScope)
+    val message = AppendEntries(term, leaderId, listOf(logEntry), -1, -1)
 
-    return ReplicationResult(false)
+    val responseQualifier: (ResponseMessage) -> Boolean = { when (it) {
+            is AppendEntriesResponse -> it.success
+            else -> {
+                logger.warn { "Received illegal response $it when expecting AppendEntriesResponse" }
+                false
+            }
+        }
+    }
+
+    // at the moment will only return true results
+    // will hang infinitely with no timeout (TODO: fix this)
+    broadcastTillMajorityRespond(nodeTransporter, leaderId, numberOfNodes, message, coroutineScope, responseQualifier)
+
+    return ReplicationResult(true)
 }
 
 suspend fun handleNewEntries(nodeId: Int,

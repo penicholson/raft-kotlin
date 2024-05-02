@@ -51,17 +51,20 @@ class RaftNodeTest : DescribeSpec({
             val nodeRegistry = SingleMachineNodeRegistry()
             val nodeTransporter = NodeTransporterImpl(nodeRegistry)
             val nodeConfig = NodeConfig()
-            val log = InMemoryLog()
 
             runBlocking {
                 val nodes = createCluster(nodeConfig, nodeTransporter, nodeRegistry)
                 val leader = nodes.findLast { it.getStatus() == NodeStatus.LEADER }
+                val followers = nodes.filter { it.getStatus() == NodeStatus.FOLLOWER }
                 leader.shouldNotBeNull()
 
                 leader.store("Hello World!")
 
                 eventually(5.seconds) {
-                    leader.getLog().getEntries() shouldContainAll listOf(LogEntry(0, 0, false, "Hello World!"))
+                    leader.getLog().getEntries() shouldContainAll listOf(LogEntry(0, leader.getCurrentTerm(), false, "Hello World!"))
+                    followers.forEach {
+                        it.getLog().getEntries() shouldContainAll listOf(LogEntry(0, leader.getCurrentTerm(), false, "Hello World!"))
+                    }
                 }
             }
         }

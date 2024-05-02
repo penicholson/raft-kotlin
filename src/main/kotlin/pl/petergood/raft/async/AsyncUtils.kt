@@ -15,7 +15,8 @@ suspend fun broadcastTillMajorityRespond(nodeTransporter: NodeTransporter,
                                   nodeId: Int,
                                   numberOfNodes: Int,
                                   message: RaftMessage,
-                                  coroutineScope: CoroutineScope): List<ResponseMessage> {
+                                  coroutineScope: CoroutineScope,
+                                  responseQualifier: (ResponseMessage) -> Boolean = { true }): List<ResponseMessage> {
     val resultChan = Channel<ResponseMessage>()
     val logger = KotlinLogging.logger { }
 
@@ -43,8 +44,14 @@ suspend fun broadcastTillMajorityRespond(nodeTransporter: NodeTransporter,
 
             //TODO: Timeouts
             while (receivedResults < ceil(numberOfNodes / 2.0)) {
-                results.add(resultChan.receive())
-                receivedResults++
+                val response = resultChan.receive()
+
+                if (responseQualifier(response)) {
+                    results.add(response)
+                    receivedResults++
+                } else {
+                    logger.debug { "Response $response did not fulfill qualifier" }
+                }
             }
 
             logger.debug { "Received $receivedResults results ($results), closing channel" }
